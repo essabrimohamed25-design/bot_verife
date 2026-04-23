@@ -1,4 +1,5 @@
-=require("dotenv").config();
+require("dotenv").config();
+
 const {
   Client,
   GatewayIntentBits,
@@ -9,7 +10,8 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  InteractionType
+  InteractionType,
+  PermissionsBitField
 } = require("discord.js");
 
 const client = new Client({
@@ -21,38 +23,51 @@ let lastPanel = null;
 client.once("ready", async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
-  const channel = await client.channels.fetch(process.env.VERIFY_PANEL_CHANNEL_ID);
+  try {
+    const channel = await client.channels.fetch(process.env.VERIFY_PANEL_CHANNEL_ID);
 
-  setInterval(async () => {
-    try {
-      if (lastPanel) await lastPanel.delete().catch(() => {});
+    setInterval(async () => {
+      try {
+        // مسح القديمة
+        if (lastPanel) await lastPanel.delete().catch(() => {});
 
-      const embed = new EmbedBuilder()
-        .setTitle("🔐 VERIFY SYSTEM")
-        .setDescription("ضغط على الزر باش تدير verification")
-        .setColor(0x00ff00)
-        .setImage("https://media.discordapp.net/attachments/1462437612647088335/1482006389843824670/content.png");
+        // Embed
+        const embed = new EmbedBuilder()
+          .setTitle("🔐 VERIFY SYSTEM")
+          .setDescription("ضغط على الزر باش تدير verification")
+          .setColor(0x00ff00)
+          .setImage("https://media.discordapp.net/attachments/1462437612647088335/1482006389843824670/content.png");
 
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("verify_btn")
-          .setLabel("VERIFY")
-          .setStyle(ButtonStyle.Success)
-      );
+        // Button
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("verify_btn")
+            .setLabel("VERIFY")
+            .setStyle(ButtonStyle.Success)
+        );
 
-      lastPanel = await channel.send({
-        embeds: [embed],
-        components: [row]
-      });
+        // إرسال
+        lastPanel = await channel.send({
+          embeds: [embed],
+          components: [row]
+        });
 
-    } catch (err) {
-      console.error("❌ Panel Error:", err);
-    }
-  }, 60000); // كل دقيقة
+        console.log("🔄 Panel updated");
+
+      } catch (err) {
+        console.error("❌ Panel Error:", err);
+      }
+    }, 60000); // كل دقيقة
+
+  } catch (err) {
+    console.error("❌ Channel Error:", err);
+  }
 });
 
-// interactions
+// INTERACTIONS
 client.on("interactionCreate", async (interaction) => {
+
+  // زر VERIFY
   if (interaction.isButton() && interaction.customId === "verify_btn") {
     const modal = new ModalBuilder()
       .setCustomId("verify_modal")
@@ -60,73 +75,79 @@ client.on("interactionCreate", async (interaction) => {
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("name").setLabel("chno smytk").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("name")
+          .setLabel("chno smytk")
+          .setStyle(TextInputStyle.Short)
       ),
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("age").setLabel("ch7al f3mrk").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("age")
+          .setLabel("ch7al f3mrk")
+          .setStyle(TextInputStyle.Short)
       ),
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("device").setLabel("chno consol li 3ndk").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("device")
+          .setLabel("chno consol li 3ndk")
+          .setStyle(TextInputStyle.Short)
       )
     );
 
     return interaction.showModal(modal);
   }
 
+  // بعد submit
   if (interaction.type === InteractionType.ModalSubmit && interaction.customId === "verify_modal") {
     try {
+      const name = interaction.fields.getTextInputValue("name");
+      const age = interaction.fields.getTextInputValue("age");
+      const device = interaction.fields.getTextInputValue("device");
+
       const role = interaction.guild.roles.cache.get(process.env.VERIFY_ROLE_ID);
 
-      // 🔴 تحقق من role
+      // Checks
       if (!role) {
-        return interaction.reply({
-          content: "❌ role ما لقاهاش",
-          ephemeral: true
-        });
+        return interaction.reply({ content: "❌ Role ما لقاهاش", ephemeral: true });
       }
 
-      // 🔴 تحقق من permissions
-      if (!interaction.guild.members.me.permissions.has("ManageRoles")) {
-        return interaction.reply({
-          content: "❌ البوت ما عندوش Manage Roles",
-          ephemeral: true
-        });
+      if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+        return interaction.reply({ content: "❌ البوت ما عندوش Manage Roles", ephemeral: true });
       }
 
-      // 🔴 تحقق من position
       if (role.position >= interaction.guild.members.me.roles.highest.position) {
-        return interaction.reply({
-          content: "❌ خاص role تكون تحت البوت",
-          ephemeral: true
-        });
+        return interaction.reply({ content: "❌ خاص role تكون تحت البوت", ephemeral: true });
       }
 
+      // إعطاء الرول
       await interaction.member.roles.add(role);
 
+      // رسالة نجاح
       await interaction.reply({
         content: `✅ مرحبا بك ${interaction.user}`,
         ephemeral: true
       });
 
-      // logs
+      // LOGS
       const logChannel = await client.channels.fetch(process.env.LOG_CHANNEL_ID);
 
-      const embed = new EmbedBuilder()
+      const logEmbed = new EmbedBuilder()
         .setTitle("📊 Verification")
         .setColor(0x00ff00)
         .addFields(
-          { name: "User", value: `${interaction.user}` },
-          { name: "ID", value: interaction.user.id }
+          { name: "User", value: `${interaction.user} (${interaction.user.id})` },
+          { name: "Name", value: name },
+          { name: "Age", value: age },
+          { name: "Device", value: device }
         )
         .setTimestamp();
 
-      logChannel.send({ embeds: [embed] });
+      await logChannel.send({ embeds: [logEmbed] });
 
     } catch (err) {
       console.error("❌ Verify Error:", err);
-
       await interaction.reply({
-        content: "❌ مشكل تقني، تأكد من الرول وpermissions",
+        content: "❌ وقع مشكل ف verification",
         ephemeral: true
       });
     }
