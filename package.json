@@ -1,7 +1,7 @@
 {
   "name": "verify-bot",
   "version": "1.0.0",
-  "description": "Simple Discord verification bot",
+  "description": "Simple Discord verification bot - accepts any input",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
