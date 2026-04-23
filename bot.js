@@ -1,4 +1,4 @@
-require("dotenv").config();
+=require("dotenv").config();
 const {
   Client,
   GatewayIntentBits,
@@ -18,18 +18,14 @@ const client = new Client({
 
 let lastPanel = null;
 
-// ===== READY =====
 client.once("ready", async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
   const channel = await client.channels.fetch(process.env.VERIFY_PANEL_CHANNEL_ID);
 
-  // تحديث البانل كل 10 ثواني
   setInterval(async () => {
     try {
-      if (lastPanel) {
-        await lastPanel.delete().catch(() => {});
-      }
+      if (lastPanel) await lastPanel.delete().catch(() => {});
 
       const embed = new EmbedBuilder()
         .setTitle("🔐 VERIFY SYSTEM")
@@ -44,89 +40,93 @@ client.once("ready", async () => {
           .setStyle(ButtonStyle.Success)
       );
 
-      const msg = await channel.send({
+      lastPanel = await channel.send({
         embeds: [embed],
         components: [row]
       });
 
-      lastPanel = msg;
-
     } catch (err) {
-      console.error(err);
+      console.error("❌ Panel Error:", err);
     }
-  }, 10000);
+  }, 60000); // كل دقيقة
 });
 
-// ===== INTERACTIONS =====
+// interactions
 client.on("interactionCreate", async (interaction) => {
-  // زر
   if (interaction.isButton() && interaction.customId === "verify_btn") {
     const modal = new ModalBuilder()
       .setCustomId("verify_modal")
       .setTitle("Verification");
 
-    const name = new TextInputBuilder()
-      .setCustomId("name")
-      .setLabel("chno smytk")
-      .setStyle(TextInputStyle.Short);
-
-    const age = new TextInputBuilder()
-      .setCustomId("age")
-      .setLabel("ch7al f3mrk")
-      .setStyle(TextInputStyle.Short);
-
-    const device = new TextInputBuilder()
-      .setCustomId("device")
-      .setLabel("chno consol li 3ndk")
-      .setStyle(TextInputStyle.Short);
-
     modal.addComponents(
-      new ActionRowBuilder().addComponents(name),
-      new ActionRowBuilder().addComponents(age),
-      new ActionRowBuilder().addComponents(device)
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("name").setLabel("chno smytk").setStyle(TextInputStyle.Short)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("age").setLabel("ch7al f3mrk").setStyle(TextInputStyle.Short)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("device").setLabel("chno consol li 3ndk").setStyle(TextInputStyle.Short)
+      )
     );
 
-    await interaction.showModal(modal);
+    return interaction.showModal(modal);
   }
 
-  // جواب
   if (interaction.type === InteractionType.ModalSubmit && interaction.customId === "verify_modal") {
-    const name = interaction.fields.getTextInputValue("name");
-    const age = interaction.fields.getTextInputValue("age");
-    const device = interaction.fields.getTextInputValue("device");
-
-    const role = interaction.guild.roles.cache.get(process.env.VERIFY_ROLE_ID);
-
     try {
-      // إعطاء رول
+      const role = interaction.guild.roles.cache.get(process.env.VERIFY_ROLE_ID);
+
+      // 🔴 تحقق من role
+      if (!role) {
+        return interaction.reply({
+          content: "❌ role ما لقاهاش",
+          ephemeral: true
+        });
+      }
+
+      // 🔴 تحقق من permissions
+      if (!interaction.guild.members.me.permissions.has("ManageRoles")) {
+        return interaction.reply({
+          content: "❌ البوت ما عندوش Manage Roles",
+          ephemeral: true
+        });
+      }
+
+      // 🔴 تحقق من position
+      if (role.position >= interaction.guild.members.me.roles.highest.position) {
+        return interaction.reply({
+          content: "❌ خاص role تكون تحت البوت",
+          ephemeral: true
+        });
+      }
+
       await interaction.member.roles.add(role);
 
-      // رسالة نجاح
       await interaction.reply({
         content: `✅ مرحبا بك ${interaction.user}`,
         ephemeral: true
       });
 
-      // ===== LOGS =====
+      // logs
       const logChannel = await client.channels.fetch(process.env.LOG_CHANNEL_ID);
 
-      const logEmbed = new EmbedBuilder()
-        .setTitle("📊 New Verification")
+      const embed = new EmbedBuilder()
+        .setTitle("📊 Verification")
         .setColor(0x00ff00)
         .addFields(
-          { name: "User", value: `${interaction.user} (${interaction.user.id})` },
-          { name: "Name", value: name },
-          { name: "Age", value: age },
-          { name: "Device", value: device }
+          { name: "User", value: `${interaction.user}` },
+          { name: "ID", value: interaction.user.id }
         )
         .setTimestamp();
 
-      logChannel.send({ embeds: [logEmbed] });
+      logChannel.send({ embeds: [embed] });
 
     } catch (err) {
-      console.error(err);
+      console.error("❌ Verify Error:", err);
+
       await interaction.reply({
-        content: "❌ وقع مشكل ف verification",
+        content: "❌ مشكل تقني، تأكد من الرول وpermissions",
         ephemeral: true
       });
     }
